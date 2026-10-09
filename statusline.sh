@@ -13,7 +13,7 @@
 #   • User's last message (second line)
 #
 # Theme: Gruvbox Dark (edit colors below to customize)
-# Repository: https://github.com/lpsgverrilla/lps-statusline
+# Repository: https://github.com/pedrotspinola/lps-statusline
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Read JSON input from stdin

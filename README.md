@@ -14,7 +14,7 @@ It's one bash script. No Python, no network calls, no credentials — it just re
 ## Install
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/lpsgverrilla/lps-statusline/main/install-remote.sh | bash
+curl -sSL https://raw.githubusercontent.com/pedrotspinola/lps-statusline/main/install-remote.sh | bash
 ```
 
 Or clone and run `./install.sh`. Restart Claude Code afterwards.

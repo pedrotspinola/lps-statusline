@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Remote installer for lps-statusline
-# Usage: curl -sSL https://raw.githubusercontent.com/lpsgverrilla/lps-statusline/main/install-remote.sh | bash
-#    or: wget -qO- https://raw.githubusercontent.com/lpsgverrilla/lps-statusline/main/install-remote.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/pedrotspinola/lps-statusline/main/install-remote.sh | bash
+#    or: wget -qO- https://raw.githubusercontent.com/pedrotspinola/lps-statusline/main/install-remote.sh | bash
 
 set -e
 
-REPO_URL="https://github.com/lpsgverrilla/lps-statusline.git"
+REPO_URL="https://github.com/pedrotspinola/lps-statusline.git"
 
 # Colors
 RED='\033[0;31m'
@@ -95,7 +95,7 @@ main() {
     echo "  1. Add the statusLine config to ~/.claude/settings.json (see above)"
     echo "  2. Restart Claude Code"
     echo ""
-    echo -e "  ${CYAN}Documentation:${RESET} https://github.com/lpsgverrilla/lps-statusline"
+    echo -e "  ${CYAN}Documentation:${RESET} https://github.com/pedrotspinola/lps-statusline"
     echo ""
 }
 
