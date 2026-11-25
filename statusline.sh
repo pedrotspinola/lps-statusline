@@ -7,6 +7,7 @@
 #   • Reasoning effort level, color-coded by tier
 #   • Git repo name, branch, and file change count
 #   • Context window usage percentage
+#   • Prompt cache: time it goes cold, or tokens to re-cache once cold
 #   • Usage quota (5-hour and 7-day limits) from Claude Code's native data
 #   • Consumption pace indicator
 #   • Fast mode indicator (⚡)
@@ -31,6 +32,10 @@ fi
 # Show 🚨🚨🚨 when a usage window is exhausted (>=100%). Off by default;
 # set to 1 here or export LPS_STATUSLINE_EXTRA_USAGE=1 to enable.
 SHOW_EXTRA_USAGE="${LPS_STATUSLINE_EXTRA_USAGE:-0}"
+
+# Clock format for "cache until <time>" (strftime, rendered by bash's printf).
+# Default 19h42; export LPS_STATUSLINE_TIME_FORMAT='%H:%M' for 19:42.
+CACHE_TIME_FORMAT="${LPS_STATUSLINE_TIME_FORMAT:-%Hh%M}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ANSI Color Codes - Gruvbox Dark Theme
@@ -96,7 +101,7 @@ SEP="${GRV_GRAY} | ${RESET}"
 # Use IFS=$'\t' to split only on tabs (display_name may contain spaces)
 # IMPORTANT: Use "_" placeholder for empty strings to prevent bash read from
 # collapsing consecutive tabs (empty fields get skipped otherwise)
-IFS=$'\t' read -r cwd model_id model_display ctx_size effort_level five_used five_reset seven_used seven_reset fast_mode ctx_used_pct < <(
+IFS=$'\t' read -r cwd model_id model_display ctx_size effort_level five_used five_reset seven_used seven_reset fast_mode ctx_used_pct pc_observed pc_warm pc_expires pc_misses pc_cause pc_recache < <(
     echo "$input" | jq -r '
         [
             ((.workspace.current_dir // .cwd // "") | if . == "" then "_" else . end),
@@ -109,7 +114,13 @@ IFS=$'\t' read -r cwd model_id model_display ctx_size effort_level five_used fiv
             ((.rate_limits.seven_day.used_percentage // "") | if . == "" then "_" else . end),
             ((.rate_limits.seven_day.resets_at // "") | if . == "" then "_" else . end),
             (.fast_mode // false),
-            ((.context_window.used_percentage // "") | if . == "" then "_" else . end)
+            ((.context_window.used_percentage // "") | if . == "" then "_" else . end),
+            (.prompt_cache.caching_observed // false),
+            (.prompt_cache.warm // false),
+            ((.prompt_cache.expires_at // "") | if . == "" then "_" else . end),
+            (.prompt_cache.misses // 0),
+            ((.prompt_cache.last_miss_cause.causes[0] // "") | if . == "" then "_" else . end),
+            ((.prompt_cache.recache_tokens_if_cold // "") | if . == "" then "_" else . end)
         ] | @tsv'
 )
 # Convert placeholders back to empty strings
@@ -122,6 +133,9 @@ IFS=$'\t' read -r cwd model_id model_display ctx_size effort_level five_used fiv
 [ "$seven_used" = "_" ] && seven_used=""
 [ "$seven_reset" = "_" ] && seven_reset=""
 [ "$ctx_used_pct" = "_" ] && ctx_used_pct=""
+[ "$pc_expires" = "_" ] && pc_expires=""
+[ "$pc_cause" = "_" ] && pc_cause=""
+[ "$pc_recache" = "_" ] && pc_recache=""
 ctx_used_pct=${ctx_used_pct%.*}   # truncate decimals
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -378,6 +392,67 @@ if [ -n "$ctx_size" ] && [ "$ctx_size" -gt 0 ] 2>/dev/null; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Prompt Cache (native prompt_cache from Claude Code's JSON input, ≥ 2.1.251)
+#   warm:    cache until 19h42   clock time the cached prefix expires
+#   cold:    cache cold 90k      tokens the next message writes to the cache again
+#   misses:  ✗2 tools            misses this session + likely cause of the last one
+# A clock time, not a countdown: between events Claude Code only re-runs this
+# script when the cache expires (or every statusLine.refreshInterval seconds),
+# so a countdown would show a stale value exactly while you are away.
+# Hidden when the field is absent or the provider reports no cache tokens.
+# ─────────────────────────────────────────────────────────────────────────────
+CACHE_SECTION=""
+
+# 89823 -> 90k, 1234567 -> 1.2M
+format_tokens() {
+    local n="$1" k tenths
+    k=$(( (n + 500) / 1000 ))
+    if [ "$k" -ge 1000 ]; then
+        tenths=$(( (n + 50000) / 100000 ))
+        printf '%d.%dM' $((tenths / 10)) $((tenths % 10))
+    elif [ "$n" -ge 1000 ]; then
+        printf '%dk' "$k"
+    else
+        printf '%d' "$n"
+    fi
+}
+
+# Short label for a miss cause. Names come from Claude Code's closed set
+# (PROMPT_CACHE_MISS_CAUSES); unlisted ones fall back to "x_y_changed" -> "x y".
+cache_cause_label() {
+    case "$1" in
+        ttl_expired_5m)             echo "idle 5m" ;;
+        ttl_expired_1h)             echo "idle 1h" ;;
+        likely_server_side)         echo "server" ;;
+        messages_rewritten)         echo "history" ;;
+        tools_changed)              echo "tools" ;;
+        cache_scope_or_ttl_changed) echo "ttl" ;;
+        "")                         echo "unknown" ;;
+        *)                          local s="${1%_changed}"; echo "${s//_/ }" ;;
+    esac
+}
+
+if [ "$pc_observed" = "true" ]; then
+    if [ "$pc_warm" = "true" ]; then
+        if [[ "$pc_expires" =~ ^[0-9]+$ ]]; then
+            printf -v cache_until "%(${CACHE_TIME_FORMAT})T" "$pc_expires"
+            CACHE_SECTION="${GRV_GRAY}cache${RESET} ${GRV_GREEN}until ${cache_until}${RESET}"
+        else
+            CACHE_SECTION="${GRV_GRAY}cache${RESET} ${GRV_GREEN}warm${RESET}"
+        fi
+    else
+        CACHE_SECTION="${GRV_GRAY}cache${RESET} ${GRV_BLUE}cold${RESET}"
+        if [[ "$pc_recache" =~ ^[0-9]+$ ]] && [ "$pc_recache" -gt 0 ]; then
+            CACHE_SECTION="${CACHE_SECTION} ${GRV_ORANGE}$(format_tokens "$pc_recache")${RESET}"
+        fi
+    fi
+
+    if [[ "$pc_misses" =~ ^[0-9]+$ ]] && [ "$pc_misses" -gt 0 ]; then
+        CACHE_SECTION="${CACHE_SECTION} ${GRV_YELLOW}✗${pc_misses} $(cache_cause_label "$pc_cause")${RESET}"
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # User's Last Message (extracted from transcript)
 # Shows the most recent user message, truncated to fit terminal width
 # ─────────────────────────────────────────────────────────────────────────────
@@ -529,7 +604,7 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Assemble the Status Line
-# Order: workdir | git | model(effort) | fast | context | usage | 7d | extra | pace
+# Order: workdir | git | model(effort) | fast | context | cache | usage | 7d | extra | pace
 # ─────────────────────────────────────────────────────────────────────────────
 OUTPUT=""
 
@@ -571,6 +646,14 @@ if [ -n "$CONTEXT_SECTION" ]; then
         OUTPUT="${OUTPUT}${SEP}"
     fi
     OUTPUT="${OUTPUT}${CONTEXT_SECTION}"
+fi
+
+# Prompt cache section: cache until 19h42 | cache cold 90k (+ ✗N cause)
+if [ -n "$CACHE_SECTION" ]; then
+    if [ -n "$OUTPUT" ]; then
+        OUTPUT="${OUTPUT}${SEP}"
+    fi
+    OUTPUT="${OUTPUT}${CACHE_SECTION}"
 fi
 
 # Claude.ai usage quota section (5h limit + reset time)
