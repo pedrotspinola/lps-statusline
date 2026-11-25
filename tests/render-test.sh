@@ -170,6 +170,16 @@ assert_not_contains "caching not observed -> section hidden" "$out" "cache"
 out=$(render '{'"$BASE"'}')
 assert_not_contains "no prompt_cache field -> section hidden" "$out" "cache"
 
+WARM='{'"$BASE"',"prompt_cache":{"warm":true,"caching_observed":true,"expires_at":'$IN_45M',"misses":2,"last_miss_cause":{"causes":["tools_changed"]}}}'
+for off in 0 false OFF no; do
+    out=$(echo "$WARM" | LPS_STATUSLINE_CACHE=$off bash "$STATUSLINE" | sed -e 's/\x1b\[[0-9;]*m//g')
+    assert_not_contains "LPS_STATUSLINE_CACHE=$off hides the section" "$out" "cache"
+done
+out=$(echo "$WARM" | LPS_STATUSLINE_CACHE=1 bash "$STATUSLINE" | sed -e 's/\x1b\[[0-9;]*m//g')
+assert_contains "LPS_STATUSLINE_CACHE=1 keeps it" "$out" "cache until $until_default ✗2 tools |"
+out=$(echo "$WARM" | LPS_STATUSLINE_CACHE='' bash "$STATUSLINE" | sed -e 's/\x1b\[[0-9;]*m//g')
+assert_contains "empty LPS_STATUSLINE_CACHE means default (on)" "$out" "cache until $until_default ✗2 tools |"
+
 # ─── Regressions ──────────────────────────────────────────────────────────────
 
 # R1: backslashes in the user's message must never be escape-expanded
