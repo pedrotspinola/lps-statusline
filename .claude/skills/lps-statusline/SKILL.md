@@ -14,14 +14,19 @@ network, no cache — Claude Code pipes a JSON payload to it on stdin per render
 One jq call extracts everything from the JSON input:
 `model.id`/`display_name`, `effort.level`, `context_window.{context_window_size,used_percentage}`,
 `rate_limits.five_hour/.seven_day.{used_percentage,resets_at}` (epoch seconds),
+`prompt_cache.{caching_observed,warm,expires_at,misses,recache_tokens_if_cold}`
+and `prompt_cache.last_miss_cause.causes[0]`,
 `fast_mode`, `transcript_path`, `cwd`. Each display section is built
 independently and omitted when its data is absent, then assembled with `|`
 separators:
 
 ```
-workdir | repo(branch) | ✓ 0 | fable5(xhigh) | ⚡ | 🧠 25% | 31% ⏱️ 2h40m | 7d:70% | 🚨🚨🚨 | 🟢
+workdir | repo(branch) | ✓ 0 | fable5(xhigh) | ⚡ | 🧠 25% | cache until 19h42 | 31% ⏱️ 2h40m | 7d:70% | 🚨🚨🚨 | 🟢
 💬 last user message
 ```
+
+The cache section reads `cache cold 90k` once expired (tokens the next message
+re-caches) and gains `✗2 tools` after misses (session count + last cause).
 
 ## Common customizations (all in statusline.sh)
 
@@ -33,6 +38,11 @@ workdir | repo(branch) | ✓ 0 | fable5(xhigh) | ⚡ | 🧠 25% | 31% ⏱️ 2h4
 - **Model colors**: `get_model_color()`; families are matched in `parse_model()`.
 - **Thresholds**: context 🧠 colors (40/70), 5h quota colors (50/75),
   7d visibility (`-gt 65`), pace emoji breakpoints (×100 integers).
+- **Cache section**: clock format via `CACHE_TIME_FORMAT` at the top (default
+  `%Hh%M`, or `export LPS_STATUSLINE_TIME_FORMAT='%H:%M'`); miss-cause labels in
+  `cache_cause_label()`; token formatting in `format_tokens()`. Keep it a clock
+  time, not a countdown — the script isn't re-run while idle (except at cache
+  expiry or every `statusLine.refreshInterval` seconds), so a countdown goes stale.
 - **🚨 extra-usage sirens**: opt-in — `SHOW_EXTRA_USAGE=1` at the top, or
   `export LPS_STATUSLINE_EXTRA_USAGE=1`.
 - **Second line (💬)**: built in the "User's Last Message" section; empty
@@ -54,4 +64,7 @@ cloned repo, also run `bash tests/render-test.sh`.
 
 - Quota + effort sections need Claude Code ≥ 2.1.214 and a subscription
   (API-key sessions have no rate limits) — absent data hides the section.
+- Cache section needs Claude Code ≥ 2.1.251 (miss causes ≥ 2.1.260); it
+  appears after the first API response and hides when the provider reports no
+  cache tokens (`caching_observed: false`).
 - bash 4+, jq, git. macOS needs Homebrew bash in the settings command.
