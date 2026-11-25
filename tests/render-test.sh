@@ -121,6 +121,55 @@ assert_contains "native used_percentage fallback (no transcript)" "$out" "🧠 3
 out=$(render '{"cwd":"/tmp","model":{"id":"claude-fable-5","display_name":"Fable 5"},"context_window":{"context_window_size":1000000},'$RL'}')
 assert_contains "baseline estimate when nothing available" "$out" "🧠 ~"
 
+# ─── Prompt cache ─────────────────────────────────────────────────────────────
+
+IN_45M=$((NOW + 2700))
+BASE='"cwd":"/tmp","model":{"id":"claude-fable-5","display_name":"Fable 5"},"context_window":{"context_window_size":1000000},'$RL
+pc() { render '{'"$BASE"',"prompt_cache":{'"$1"'}}'; }
+
+printf -v until_default '%(%Hh%M)T' "$IN_45M"
+out=$(pc '"warm":true,"caching_observed":true,"ttl":"1h","expires_at":'$IN_45M',"misses":0,"last_miss_cause":null,"recache_tokens_if_cold":89823')
+assert_contains "warm cache shows the clock time it goes cold" "$out" "cache until $until_default |"
+assert_not_contains "no misses -> no miss marker" "$out" "✗"
+
+printf -v until_colon '%(%H:%M)T' "$IN_45M"
+out=$(echo '{'"$BASE"',"prompt_cache":{"warm":true,"caching_observed":true,"expires_at":'$IN_45M',"misses":0}}' | LPS_STATUSLINE_TIME_FORMAT='%H:%M' bash "$STATUSLINE" | sed -e 's/\x1b\[[0-9;]*m//g')
+assert_contains "time format is configurable" "$out" "cache until $until_colon |"
+
+out=$(pc '"warm":true,"caching_observed":true,"expires_at":null,"misses":0')
+assert_contains "warm without expires_at" "$out" "cache warm |"
+
+out=$(pc '"warm":false,"caching_observed":true,"expires_at":null,"misses":0,"recache_tokens_if_cold":89823')
+assert_contains "cold cache shows tokens to re-cache" "$out" "cache cold 90k |"
+
+out=$(pc '"warm":false,"caching_observed":true,"expires_at":null,"misses":0,"recache_tokens_if_cold":null')
+assert_contains "cold right after compaction (recache null)" "$out" "cache cold |"
+
+out=$(pc '"warm":false,"caching_observed":true,"misses":0,"recache_tokens_if_cold":1234567')
+assert_contains "millions formatted with one decimal" "$out" "cache cold 1.2M |"
+out=$(pc '"warm":false,"caching_observed":true,"misses":0,"recache_tokens_if_cold":999600')
+assert_contains "rounding up to a million switches unit" "$out" "cache cold 1.0M |"
+out=$(pc '"warm":false,"caching_observed":true,"misses":0,"recache_tokens_if_cold":950')
+assert_contains "under 1000 tokens shown as-is" "$out" "cache cold 950 |"
+
+out=$(pc '"warm":true,"caching_observed":true,"expires_at":'$IN_45M',"misses":2,"last_miss_cause":{"causes":["tools_changed"],"tools_added":3,"tools_removed":0}')
+assert_contains "misses with last cause" "$out" "cache until $until_default ✗2 tools |"
+
+out=$(pc '"warm":false,"caching_observed":true,"misses":1,"last_miss_cause":{"causes":["ttl_expired_1h"]},"recache_tokens_if_cold":120000')
+assert_contains "idle expiry cause" "$out" "cache cold 120k ✗1 idle 1h |"
+
+out=$(pc '"warm":true,"caching_observed":true,"expires_at":'$IN_45M',"misses":1,"last_miss_cause":{"causes":["thinking_display_changed","model_changed"]}')
+assert_contains "unlisted cause falls back to its words; first cause only" "$out" "✗1 thinking display |"
+
+out=$(pc '"warm":true,"caching_observed":true,"expires_at":'$IN_45M',"misses":3,"last_miss_cause":null')
+assert_contains "misses without a diagnosed cause" "$out" "✗3 unknown |"
+
+out=$(pc '"warm":false,"caching_observed":false,"expires_at":null,"misses":0,"recache_tokens_if_cold":5000')
+assert_not_contains "caching not observed -> section hidden" "$out" "cache"
+
+out=$(render '{'"$BASE"'}')
+assert_not_contains "no prompt_cache field -> section hidden" "$out" "cache"
+
 # ─── Regressions ──────────────────────────────────────────────────────────────
 
 # R1: backslashes in the user's message must never be escape-expanded
