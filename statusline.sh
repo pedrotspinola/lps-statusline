@@ -33,6 +33,10 @@ fi
 # set to 1 here or export LPS_STATUSLINE_EXTRA_USAGE=1 to enable.
 SHOW_EXTRA_USAGE="${LPS_STATUSLINE_EXTRA_USAGE:-0}"
 
+# Prompt-cache section ("cache until 19h42" / "cache cold 90k"). On by default;
+# set to 0 here or export LPS_STATUSLINE_CACHE=0 to hide it.
+SHOW_CACHE="${LPS_STATUSLINE_CACHE:-1}"
+
 # Clock format for "cache until <time>" (strftime, rendered by bash's printf).
 # Default 19h42; export LPS_STATUSLINE_TIME_FORMAT='%H:%M' for 19:42.
 CACHE_TIME_FORMAT="${LPS_STATUSLINE_TIME_FORMAT:-%Hh%M}"
@@ -399,7 +403,8 @@ fi
 # A clock time, not a countdown: between events Claude Code only re-runs this
 # script when the cache expires (or every statusLine.refreshInterval seconds),
 # so a countdown would show a stale value exactly while you are away.
-# Hidden when the field is absent or the provider reports no cache tokens.
+# Hidden when the field is absent, the provider reports no cache tokens, or
+# SHOW_CACHE is 0/false/off/no (see User config).
 # ─────────────────────────────────────────────────────────────────────────────
 CACHE_SECTION=""
 
@@ -431,6 +436,10 @@ cache_cause_label() {
         *)                          local s="${1%_changed}"; echo "${s//_/ }" ;;
     esac
 }
+
+case "${SHOW_CACHE,,}" in
+    0|false|off|no) pc_observed=false ;;
+esac
 
 if [ "$pc_observed" = "true" ]; then
     if [ "$pc_warm" = "true" ]; then
