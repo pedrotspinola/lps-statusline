@@ -26,16 +26,45 @@ Uninstall anytime with `~/.local/share/lps-statusline/uninstall.sh`.
 - **git** — `repo(branch)` plus changed-file count (✓ clean, △ few, ● many)
 - **model + effort** — `fable5(xhigh)`: family-colored model, effort color-coded low→max
 - 🧠 — context window used, green→red
-- **cache** — `cache until 19h42`: the prompt cache stays warm until that time. `cache cold 90k`: it expired, so your next message writes ~90k tokens to the cache again. After a cache miss, `✗2 tools` adds the session's miss count and the likely cause of the last one (`idle 1h`, `tools`, `model`, `system prompt`, …). It's a clock time rather than a countdown because, while you're idle, Claude Code re-runs the status line only when the cache expires or a quota window resets (or every `statusLine.refreshInterval` seconds, if set) — a countdown would show a stale value
+- **cache** — prompt-cache state: warm until when, or how much a cold cache re-writes ([below](#prompt-cache))
 - **quota** — 5-hour usage % and ⏱️ time until reset
 - **pace** — 💤 🔵 🟢 🟡 🟠 🔴 🔥 — how fast you're burning the 5-hour window
 - 💬 — your last message, on the second line (best-effort)
 
 And only when it matters: **7d:N%** (weekly quota past 65%), **⚡** (fast mode), **🚨🚨🚨** (a quota window exhausted — opt-in via `LPS_STATUSLINE_EXTRA_USAGE=1`).
 
+### Prompt cache
+
+![prompt-cache states](screenshot-cache.png)
+
+Claude Code caches your conversation between messages. Reading from a warm cache is far cheaper than writing to it, so a cold cache in a long session is worth seeing before you hit Enter.
+
+- `cache until 08h54` — the cache is warm and expires at that time; each response pushes it forward.
+- `cache cold 473k` — it expired, so your next message writes those ~473k tokens to the cache again instead of reading them.
+- `✗1 idle 1h` — cache misses this session, with Claude Code's likely cause for the last one: `idle 5m` / `idle 1h` (idle past the cache's lifetime), `tools`, `model`, `system prompt`, `history` (earlier messages changed), `server`, …
+
+It shows a clock time, not a countdown: while you're idle, Claude Code re-runs the status line only when the cache expires or a quota window resets (or every `statusLine.refreshInterval` seconds, if set), so a countdown would be stale exactly when you come back. The section is on by default — see below to hide it.
+
 ## Customize
 
-Colors, separators, and every threshold live at the top of `statusline.sh` — edit them and the next render picks it up, no restart. The cache time defaults to `19h42`; `export LPS_STATUSLINE_TIME_FORMAT='%H:%M'` gives `19:42` (any strftime format). The installer can also add a small Claude Code **skill** so Claude itself can make those edits for you, from any directory.
+Colors, separators, and every threshold live at the top of `statusline.sh` — edit them and the next render picks it up, no restart. The installer can also add a small Claude Code **skill** so Claude itself can make those edits for you, from any directory.
+
+A few switches are environment variables, so they survive updates:
+
+| Variable | Effect |
+|---|---|
+| `LPS_STATUSLINE_CACHE=0` | hide the prompt-cache section |
+| `LPS_STATUSLINE_TIME_FORMAT='%H:%M'` | cache time as `19:42` (default `19h42`; any strftime format) |
+| `LPS_STATUSLINE_EXTRA_USAGE=1` | 🚨🚨🚨 when a quota window is exhausted |
+
+Put them in front of the command in `~/.claude/settings.json`, or export them in the shell you start Claude Code from:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "LPS_STATUSLINE_CACHE=0 bash ~/.local/share/lps-statusline/statusline.sh"
+}
+```
 
 ## Requirements
 

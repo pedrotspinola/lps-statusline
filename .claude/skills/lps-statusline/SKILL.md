@@ -38,7 +38,9 @@ re-caches) and gains `✗2 tools` after misses (session count + last cause).
 - **Model colors**: `get_model_color()`; families are matched in `parse_model()`.
 - **Thresholds**: context 🧠 colors (40/70), 5h quota colors (50/75),
   7d visibility (`-gt 65`), pace emoji breakpoints (×100 integers).
-- **Cache section**: clock format via `CACHE_TIME_FORMAT` at the top (default
+- **Cache section**: on by default — hide with `SHOW_CACHE=0` at the top, or
+  `LPS_STATUSLINE_CACHE=0` (exported, or prefixed to `statusLine.command` in
+  settings.json — verified to reach the script). Clock format via `CACHE_TIME_FORMAT` at the top (default
   `%Hh%M`, or `export LPS_STATUSLINE_TIME_FORMAT='%H:%M'`); miss-cause labels in
   `cache_cause_label()`; token formatting in `format_tokens()`. Keep it a clock
   time, not a countdown — the script isn't re-run while idle (except at cache
